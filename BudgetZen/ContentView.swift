@@ -8,14 +8,37 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var transactionViewModel = TransactionViewModel()
+    @AppStorage("isDarkMode") private var isDarkMode = false
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        TabView {
+            DashboardView(viewModel: transactionViewModel)
+                .tabItem {
+                    Label("Tableau bord", systemImage: "chart.pie.fill")
+                }
+            
+            TransactionsView(viewModel: transactionViewModel)
+                .tabItem {
+                    Label("Transactions", systemImage: "list.bullet")
+                }
+            
+            CalendarView(viewModel: transactionViewModel)
+                .tabItem {
+                    Label("Calendrier", systemImage: "calendar")
+                }
+            
+            StatisticsView(transactionViewModel: transactionViewModel)
+                .tabItem {
+                    Label("Graphiques", systemImage: "chart.bar.fill")
+                }
+            
+            SettingsView()
+                .tabItem {
+                    Label("Réglages", systemImage: "gear")
+                }
         }
-        .padding()
+        .preferredColorScheme(isDarkMode ? .dark : .light)
     }
 }
 
