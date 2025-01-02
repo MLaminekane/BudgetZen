@@ -1,11 +1,27 @@
 import Foundation
+import LocalAuthentication
+import CoreData
 
 class TransactionViewModel: ObservableObject {
     @Published var transactions: [Transaction] = []
     @Published var categories: [Category] = []
     @Published var budgets: [Budget] = []
+    @Published var useBiometrics: Bool = false
+    @Published var enableICloudSync: Bool = false
+    @Published var lastSyncDate: Date?
     
-    init() {
+    private let viewContext: NSManagedObjectContext
+    
+    // Initializer par défaut
+    convenience init() {
+        // Obtenir le contexte par défaut
+        let context = PersistenceController.shared.container.viewContext
+        self.init(context: context)
+    }
+    
+    // Initializer principal
+    init(context: NSManagedObjectContext) {
+        self.viewContext = context
         loadCategories()
         loadTransactions()
         loadBudgets()
@@ -189,5 +205,72 @@ class TransactionViewModel: ObservableObject {
     
     var activeSubscriptions: [Transaction] {
         transactions.filter { $0.isRecurring }
+    }
+    
+    func deleteAllData() {
+        transactions.removeAll()
+        categories = Category.defaultCategories
+        budgets.removeAll()
+        saveTransactions()
+        saveCategories()
+        saveBudgets()
+    }
+    
+    func saveTransactions() {
+        if let encoded = try? JSONEncoder().encode(transactions) {
+            UserDefaults.standard.set(encoded, forKey: "transactions")
+        }
+    }
+    
+    func checkBiometrics() {
+        let context = LAContext()
+        var error: NSError?
+        
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Activer l'authentification biométrique") { success, error in
+                DispatchQueue.main.async {
+                    self.useBiometrics = success
+                }
+            }
+        }
+    }
+    
+    func exportData(format: ExportFormat) {
+        // Implémentation de l'exportation
+        switch format {
+        case .csv:
+            // Logique d'exportation CSV
+            print("Exporting to CSV...")
+        case .pdf:
+            // Logique d'exportation PDF
+            print("Exporting to PDF...")
+        }
+    }
+    
+    func nextCategoryOrder(for type: TransactionType) -> Int {
+        let typeCategories = categories.filter { $0.type == type }
+        return (typeCategories.map { $0.order }.max() ?? -1) + 1
+    }
+    
+    func resetAllData() {
+        // Supprimer les données de la mémoire
+        transactions.removeAll()
+        categories = Category.defaultCategories
+        budgets.removeAll()
+        
+        // Supprimer les données de UserDefaults
+        UserDefaults.standard.removeObject(forKey: "transactions")
+        UserDefaults.standard.removeObject(forKey: "categories")
+        UserDefaults.standard.removeObject(forKey: "budgets")
+        
+        // Forcer UserDefaults à sauvegarder immédiatement
+        UserDefaults.standard.synchronize()
+        
+        // Sauvegarder l'état initial (catégories par défaut)
+        saveCategories()
+        saveBudgets()
+        
+        // Réinitialiser les totaux et notifier l'interface
+        objectWillChange.send()
     }
 } 

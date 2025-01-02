@@ -41,21 +41,21 @@ struct StatisticsChartView: View {
                                 x: .value("Date", data.date),
                                 y: .value("Montant", data.amount)
                             )
-                            .foregroundStyle(viewModel.categoryColor(for: data.categoryId))
+                            .foregroundStyle(viewModel.categoryColor(viewModel.category(for: data.categoryId) ?? Category.defaultCategories[0]))
                         
                         case .line:
                             LineMark(
                                 x: .value("Date", data.date),
                                 y: .value("Montant", data.amount)
                             )
-                            .foregroundStyle(viewModel.categoryColor(for: data.categoryId))
+                            .foregroundStyle(viewModel.categoryColor(viewModel.category(for: data.categoryId) ?? Category.defaultCategories[0]))
                         
                         case .area:
                             AreaMark(
                                 x: .value("Date", data.date),
                                 y: .value("Montant", data.amount)
                             )
-                            .foregroundStyle(viewModel.categoryColor(for: data.categoryId))
+                            .foregroundStyle(viewModel.categoryColor(viewModel.category(for: data.categoryId) ?? Category.defaultCategories[0]))
                         }
                         
                         if viewModel.selectedChartType != .area {
@@ -63,7 +63,7 @@ struct StatisticsChartView: View {
                                 x: .value("Date", data.date),
                                 y: .value("Montant", data.amount)
                             )
-                            .foregroundStyle(viewModel.categoryColor(for: data.categoryId))
+                            .foregroundStyle(viewModel.categoryColor(viewModel.category(for: data.categoryId) ?? Category.defaultCategories[0]))
                         }
                     }
                     

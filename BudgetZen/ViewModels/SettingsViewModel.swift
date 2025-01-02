@@ -1,22 +1,6 @@
-import SwiftUI
+import Foundation
 import LocalAuthentication
-
-enum InterfaceStyle {
-    case system, light, dark
-}
-
-struct Currency: Identifiable {
-    let id = UUID()
-    let code: String
-    let name: String
-    let symbol: String
-}
-
-struct Language: Identifiable {
-    let id = UUID()
-    let code: String
-    let name: String
-}
+import SwiftUI
 
 class SettingsViewModel: ObservableObject {
     @Published var useBiometrics = false
@@ -76,7 +60,7 @@ class SettingsViewModel: ObservableObject {
     }
     
     func exportData(format: ExportFormat) {
-        // Implémenter l'exportation des données
+        // Implémentation de l'exportation
     }
     
     func validatePIN(_ pin: String) -> Bool {
@@ -150,10 +134,6 @@ class SettingsViewModel: ObservableObject {
         categories = Category.defaultCategories
         // ... reste du code d'initialisation
     }
-}
-
-enum ExportFormat {
-    case csv, pdf
 }
 
 enum NotificationFrequency {

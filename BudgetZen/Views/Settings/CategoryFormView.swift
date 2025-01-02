@@ -2,26 +2,24 @@ import SwiftUI
 
 struct CategoryFormView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var viewModel: SettingsViewModel
-    @State private var name = ""
-    @State private var icon = "tag.fill"
-    @State private var color = Color.blue
-    @State private var type = TransactionType.expense
+    @ObservedObject var viewModel: TransactionViewModel
+    
+    @State private var name: String
+    @State private var icon: String
+    @State private var selectedColor: Color
+    @State private var type: TransactionType
     @State private var showingError = false
     @State private var errorMessage = ""
     
-    let editingCategory: Category?
+    private let category: Category?
     
-    init(viewModel: SettingsViewModel, editingCategory: Category? = nil) {
+    init(viewModel: TransactionViewModel, category: Category? = nil) {
         self.viewModel = viewModel
-        self.editingCategory = editingCategory
-        
-        if let category = editingCategory {
-            _name = State(initialValue: category.name)
-            _icon = State(initialValue: category.icon)
-            _color = State(initialValue: Color(hex: category.color))
-            _type = State(initialValue: category.type)
-        }
+        self.category = category
+        _name = State(initialValue: category?.name ?? "")
+        _icon = State(initialValue: category?.icon ?? "tag")
+        _selectedColor = State(initialValue: category?.uiColor ?? .blue)
+        _type = State(initialValue: category?.type ?? .expense)
     }
     
     // Groupes d'icônes organisés par thème
@@ -78,7 +76,7 @@ struct CategoryFormView: View {
                                             IconButton(
                                                 iconName: iconName,
                                                 isSelected: icon == iconName,
-                                                color: color
+                                                color: selectedColor
                                             ) {
                                                 icon = iconName
                                             }
@@ -92,7 +90,7 @@ struct CategoryFormView: View {
                 }
                 
                 Section(header: Text("Couleur")) {
-                    ColorPicker("Couleur de la catégorie", selection: $color)
+                    ColorPicker("Couleur", selection: $selectedColor)
                     
                     // Palette de couleurs prédéfinies
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -106,7 +104,7 @@ struct CategoryFormView: View {
                                             .stroke(Color.primary.opacity(0.2), lineWidth: 1)
                                     )
                                     .onTapGesture {
-                                        color = presetColor
+                                        selectedColor = presetColor
                                     }
                             }
                         }
@@ -114,7 +112,7 @@ struct CategoryFormView: View {
                     }
                 }
             }
-            .navigationTitle(editingCategory == nil ? "Nouvelle catégorie" : "Modifier la catégorie")
+            .navigationTitle(category == nil ? "Nouvelle catégorie" : "Modifier la catégorie")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -124,8 +122,8 @@ struct CategoryFormView: View {
                 }
                 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(editingCategory == nil ? "Ajouter" : "Enregistrer") {
-                        saveCategory()
+                    Button(category == nil ? "Ajouter" : "Enregistrer") {
+                        save()
                     }
                     .disabled(!isValid)
                 }
@@ -147,37 +145,37 @@ struct CategoryFormView: View {
         .pink, .indigo, .teal, .mint, .cyan
     ]
     
-    private func saveCategory() {
+    private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Validation
         guard !trimmedName.isEmpty else {
             errorMessage = "Le nom de la catégorie ne peut pas être vide"
             showingError = true
             return
         }
         
-        // Vérifier si le nom existe déjà
-        if viewModel.categories.contains(where: { $0.name.lowercased() == name.lowercased() && $0.id != editingCategory?.id }) {
+        if viewModel.categories.contains(where: { $0.name.lowercased() == trimmedName.lowercased() && $0.id != category?.id }) {
             showingError = true
             errorMessage = "Une catégorie avec ce nom existe déjà"
             return
         }
         
-        let category = Category(
-            id: editingCategory?.id ?? UUID(),
+        let newOrder = category?.order ?? viewModel.categories.filter { $0.type == type }.count
+        
+        let newCategory = Category(
+            id: category?.id ?? UUID(),
             name: trimmedName,
             icon: icon,
-            color: color.toHex(),
+            color: selectedColor.toHex(),
             type: type,
-            isDefault: false,
-            order: editingCategory?.order ?? viewModel.nextCategoryOrder(for: type)
+            isDefault: category?.isDefault ?? false,
+            order: newOrder
         )
         
-        if editingCategory != nil {
-            viewModel.updateCategory(category)
+        if let category = category {
+            viewModel.updateCategory(newCategory)
         } else {
-            viewModel.addCategory(category)
+            viewModel.addCategory(newCategory)
         }
         
         dismiss()
@@ -204,4 +202,4 @@ struct IconButton: View {
                 )
         }
     }
-} 
+}

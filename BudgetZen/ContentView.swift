@@ -18,11 +18,6 @@ struct ContentView: View {
                     Label("Tableau bord", systemImage: "chart.pie.fill")
                 }
             
-            TransactionsView(viewModel: transactionViewModel)
-                .tabItem {
-                    Label("Transactions", systemImage: "list.bullet")
-                }
-            
             CalendarView(viewModel: transactionViewModel)
                 .tabItem {
                     Label("Calendrier", systemImage: "calendar")

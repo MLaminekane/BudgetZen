@@ -3,53 +3,66 @@ import SwiftUI
 struct AddTransactionView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: TransactionViewModel
-    
     @State private var title = ""
-    @State private var amount = ""
-    @State private var description = ""
-    @State private var date = Date()
+    @State private var amount = 0.0
     @State private var type: TransactionType = .expense
-    @State private var selectedCategoryId: UUID?
+    @State private var selectedCategory: Category?
+    @State private var date: Date
+    @State private var note = ""
     @State private var isRecurring = false
-    @State private var recurringInterval: RecurringInterval = .monthly
+    @State private var recurringInterval: RecurringInterval?
+    
+    init(viewModel: TransactionViewModel, preselectedDate: Date? = nil) {
+        self.viewModel = viewModel
+        _date = State(initialValue: preselectedDate ?? Date())
+    }
     
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Détails")) {
+                Section(header: Text("Informations")) {
                     TextField("Titre", text: $title)
                     
-                    TextField("Montant", text: $amount)
+                    TextField("Montant", value: $amount, format: .currency(code: "EUR"))
                         .keyboardType(.decimalPad)
                     
-                    TextField("Description (optionnel)", text: $description)
+                    TextField("Note", text: $note)
                     
-                    DatePicker("Date", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                    DatePicker("Date", selection: $date, displayedComponents: [.date])
                 }
                 
                 Section(header: Text("Type")) {
                     Picker("Type", selection: $type) {
-                        Text(TransactionType.expense.rawValue).tag(TransactionType.expense)
-                        Text(TransactionType.income.rawValue).tag(TransactionType.income)
+                        ForEach(TransactionType.allCases, id: \.self) { type in
+                            Text(type.rawValue).tag(type)
+                        }
                     }
-                    .pickerStyle(SegmentedPickerStyle())
+                    .pickerStyle(.segmented)
                 }
                 
                 Section(header: Text("Catégorie")) {
-                    ForEach(viewModel.categories.filter { $0.type == type }) { category in
-                        HStack {
-                            Image(systemName: category.icon)
-                                .foregroundColor(category.uiColor)
-                            Text(category.name)
-                            Spacer()
-                            if selectedCategoryId == category.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.accentColor)
-                            }
+                    let categories = type == .expense ? viewModel.expenseCategories : viewModel.incomeCategories
+                    
+                    if categories.isEmpty {
+                        NavigationLink(destination: CategoriesSettingsView(viewModel: viewModel)) {
+                            Text("Ajouter une catégorie")
+                                .foregroundColor(.blue)
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedCategoryId = category.id
+                    } else {
+                        ForEach(categories) { category in
+                            CategorySelectionRow(
+                                category: category,
+                                isSelected: selectedCategory?.id == category.id,
+                                action: { selectedCategory = category }
+                            )
+                        }
+                        
+                        NavigationLink(destination: CategoriesSettingsView(viewModel: viewModel)) {
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                Text("Gérer les catégories")
+                            }
+                            .foregroundColor(.blue)
                         }
                     }
                 }
@@ -86,25 +99,50 @@ struct AddTransactionView: View {
     }
     
     private var isValid: Bool {
-        !title.isEmpty && !amount.isEmpty && selectedCategoryId != nil
+        !title.isEmpty && amount > 0 && selectedCategory != nil
     }
     
     private func saveTransaction() {
-        guard let amount = Double(amount.replacingOccurrences(of: ",", with: ".")),
-              let categoryId = selectedCategoryId else { return }
+        guard let category = selectedCategory else { return }
         
         let transaction = Transaction(
-            amount: amount,
+            amount: type == .expense ? -amount : amount,
             title: title,
             date: date,
             type: type,
-            categoryId: selectedCategoryId ?? UUID(),
-            note: description.isEmpty ? nil : description,
+            categoryId: category.id,
+            note: note.isEmpty ? nil : note,
             isRecurring: isRecurring,
             recurringInterval: isRecurring ? recurringInterval : nil
         )
         
         viewModel.addTransaction(transaction)
         dismiss()
+    }
+}
+
+struct CategorySelectionRow: View {
+    let category: Category
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: category.icon)
+                    .foregroundColor(category.uiColor)
+                    .frame(width: 30)
+                
+                Text(category.name)
+                
+                Spacer()
+                
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.blue)
+                }
+            }
+        }
+        .foregroundColor(.primary)
     }
 } 

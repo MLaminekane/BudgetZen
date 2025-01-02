@@ -1,73 +1,240 @@
 import SwiftUI
+import LocalAuthentication
 
 struct PINSettingsView: View {
-    @ObservedObject var viewModel: SettingsViewModel
-    @State private var currentPIN = ""
-    @State private var newPIN = ""
-    @State private var confirmPIN = ""
-    @State private var showingError = false
+    @AppStorage("usePIN") private var usePIN = false
+    @AppStorage("pinCode") private var storedPIN = ""
+    @AppStorage("useDevicePIN") private var useDevicePIN = false
+    @AppStorage("useFaceID") private var useFaceID = false
+    @State private var showingPINSetup = false
+    @State private var showingDevicePINAlert = false
+    @State private var pin = ""
+    @State private var confirmPin = ""
+    @State private var showError = false
     @State private var errorMessage = ""
+    @State private var isChangingPIN = false
     
     var body: some View {
         List {
-            if viewModel.hasPIN {
-                Section(header: Text("PIN actuel")) {
-                    SecureField("Entrez votre PIN actuel", text: $currentPIN)
-                        .keyboardType(.numberPad)
-                }
-            }
-            
-            Section(header: Text("Nouveau PIN")) {
-                SecureField("Entrez un nouveau PIN", text: $newPIN)
-                    .keyboardType(.numberPad)
-                SecureField("Confirmez le nouveau PIN", text: $confirmPIN)
-                    .keyboardType(.numberPad)
-            }
-            
             Section {
-                Button(viewModel.hasPIN ? "Modifier le PIN" : "Définir le PIN") {
-                    updatePIN()
-                }
-                .disabled(!canUpdatePIN)
-                
-                if viewModel.hasPIN {
-                    Button("Supprimer le PIN", role: .destructive) {
-                        viewModel.removePIN()
+                Toggle("Utiliser un code PIN", isOn: $usePIN)
+                    .onChange(of: usePIN) { _, newValue in
+                        if newValue {
+                            showingDevicePINAlert = true
+                        } else {
+                            authenticateToDisable()
+                        }
                     }
+            }
+            
+            if usePIN {
+                Section {
+                    Toggle("Utiliser le code de l'iPhone", isOn: $useDevicePIN)
+                        .onChange(of: useDevicePIN) { _, newValue in
+                            if newValue {
+                                authenticateWithDevicePIN()
+                            }
+                        }
+                    
+                    if !useDevicePIN {
+                        Button("Modifier le code PIN") {
+                            isChangingPIN = true
+                        }
+                    }
+                }
+                
+                Section {
+                    Toggle("Utiliser Face ID", isOn: $useFaceID)
+                        .onChange(of: useFaceID) { _, newValue in
+                            if newValue {
+                                checkBiometrics()
+                            }
+                        }
+                }
+            }
+            
+            if usePIN {
+                Section(footer: Text(useDevicePIN ? "Le code de votre iPhone sera utilisé" : "Le code PIN sera demandé à chaque ouverture de l'application")) {
+                    Text("Code PIN activé")
+                        .foregroundColor(.green)
                 }
             }
         }
         .navigationTitle("Code PIN")
-        .alert("Erreur", isPresented: $showingError) {
-            Button("OK", role: .cancel) {}
+        .sheet(isPresented: $showingPINSetup) {
+            PINSetupView(pin: $pin, confirmPin: $confirmPin, showError: $showError, errorMessage: $errorMessage)
+        }
+        .sheet(isPresented: $isChangingPIN) {
+            NavigationView {
+                PINSetupView(pin: $pin, confirmPin: $confirmPin, showError: $showError, errorMessage: $errorMessage, isChangingPIN: true)
+            }
+        }
+        .alert("Code de l'iPhone", isPresented: $showingDevicePINAlert) {
+            Button("Utiliser le code de l'iPhone") {
+                useDevicePIN = true
+                authenticateWithDevicePIN()
+            }
+            Button("Créer un nouveau code") {
+                useDevicePIN = false
+                showingPINSetup = true
+            }
+            Button("Annuler", role: .cancel) {
+                usePIN = false
+                useDevicePIN = false
+            }
+        } message: {
+            Text("Voulez-vous utiliser le même code que celui de votre iPhone ou créer un nouveau code ?")
+        }
+        .alert("Erreur", isPresented: $showError) {
+            Button("OK", role: .cancel) {
+                if !isChangingPIN {
+                    usePIN = false
+                    useDevicePIN = false
+                    useFaceID = false
+                }
+            }
         } message: {
             Text(errorMessage)
         }
     }
     
-    private var canUpdatePIN: Bool {
-        if viewModel.hasPIN {
-            return !currentPIN.isEmpty && newPIN.count == 4 && newPIN == confirmPIN
-        } else {
-            return newPIN.count == 4 && newPIN == confirmPIN
+    private func authenticateWithDevicePIN() {
+        let context = LAContext()
+        var error: NSError?
+        
+        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthentication,
+                                 localizedReason: "Confirmer l'utilisation du code de l'iPhone") { success, error in
+                DispatchQueue.main.async {
+                    if success {
+                        usePIN = true
+                        storedPIN = ""
+                    } else {
+                        usePIN = false
+                        useDevicePIN = false
+                        showError = true
+                        errorMessage = "L'authentification a échoué"
+                    }
+                }
+            }
         }
     }
     
-    private func updatePIN() {
-        if viewModel.hasPIN {
-            guard viewModel.validatePIN(currentPIN) else {
-                errorMessage = "PIN actuel incorrect"
-                showingError = true
-                return
+    private func checkBiometrics() {
+        let context = LAContext()
+        var error: NSError?
+        
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
+                                 localizedReason: "Activer Face ID") { success, error in
+                DispatchQueue.main.async {
+                    if !success {
+                        useFaceID = false
+                        showError = true
+                        errorMessage = "L'activation de Face ID a échoué"
+                    }
+                }
+            }
+        } else {
+            DispatchQueue.main.async {
+                useFaceID = false
+                showError = true
+                errorMessage = "Face ID n'est pas disponible sur cet appareil"
             }
         }
-        
-        guard newPIN.count == 4, CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: newPIN)) else {
-            errorMessage = "Le PIN doit contenir 4 chiffres"
-            showingError = true
+    }
+    
+    private func authenticateToDisable() {
+        if useDevicePIN {
+            let context = LAContext()
+            var error: NSError?
+            
+            if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
+                context.evaluatePolicy(.deviceOwnerAuthentication,
+                                     localizedReason: "Confirmer la désactivation du code PIN") { success, error in
+                    DispatchQueue.main.async {
+                        if success {
+                            usePIN = false
+                            useDevicePIN = false
+                            storedPIN = ""
+                            useFaceID = false
+                        } else {
+                            showError = true
+                            errorMessage = "L'authentification a échoué"
+                            usePIN = true
+                        }
+                    }
+                }
+            }
+        } else {
+            usePIN = false
+            useDevicePIN = false
+            storedPIN = ""
+            useFaceID = false
+        }
+    }
+}
+
+struct PINSetupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var pin: String
+    @Binding var confirmPin: String
+    @Binding var showError: Bool
+    @Binding var errorMessage: String
+    var isChangingPIN: Bool = false
+    
+    @AppStorage("pinCode") private var storedPIN = ""
+    @AppStorage("usePIN") private var usePIN = false
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text(isChangingPIN ? "Modifier le code PIN" : "Configurer le code PIN")
+                    .font(.headline)
+                
+                SecureField("Entrez votre code PIN", text: $pin)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                    .multilineTextAlignment(.center)
+                
+                SecureField("Confirmez votre code PIN", text: $confirmPin)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                    .multilineTextAlignment(.center)
+                
+                Button("Enregistrer") {
+                    savePIN()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(pin.count < 4 || confirmPin.count < 4)
+            }
+            .padding()
+            .navigationBarItems(trailing: Button("Annuler") {
+                pin = ""
+                confirmPin = ""
+                if !isChangingPIN {
+                    usePIN = false
+                }
+                dismiss()
+            })
+        }
+    }
+    
+    private func savePIN() {
+        guard pin.count >= 4 else {
+            showError = true
+            errorMessage = "Le code PIN doit contenir au moins 4 chiffres"
             return
         }
         
-        viewModel.updatePIN(newPIN)
+        guard pin == confirmPin else {
+            showError = true
+            errorMessage = "Les codes PIN ne correspondent pas"
+            return
+        }
+        
+        storedPIN = pin
+        usePIN = true
+        dismiss()
     }
 } 

@@ -1,75 +1,66 @@
 import SwiftUI
 
 struct CategoriesSettingsView: View {
-    @ObservedObject var viewModel: SettingsViewModel
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var viewModel: TransactionViewModel
     @State private var showingAddCategory = false
-    @State private var selectedType = TransactionType.expense
+    @State private var editingCategory: Category?
     
     var body: some View {
         List {
-            CategorySection(type: .expense, viewModel: viewModel)
-            CategorySection(type: .income, viewModel: viewModel)
+            Section(header: Text("Dépenses")) {
+                ForEach(viewModel.expenseCategories) { category in
+                    CategoryRow(category: category)
+                        .onTapGesture {
+                            editingCategory = category
+                        }
+                }
+            }
+            
+            Section(header: Text("Revenus")) {
+                ForEach(viewModel.incomeCategories) { category in
+                    CategoryRow(category: category)
+                        .onTapGesture {
+                            editingCategory = category
+                        }
+                }
+            }
         }
         .navigationTitle("Catégories")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                AddButton(showingAddCategory: $showingAddCategory)
+                Button {
+                    showingAddCategory = true
+                } label: {
+                    Image(systemName: "plus")
+                }
             }
         }
         .sheet(isPresented: $showingAddCategory) {
-            CategoryFormView(viewModel: viewModel, editingCategory: nil)
+            CategoryFormView(viewModel: viewModel)
         }
-        .sheet(item: $viewModel.editingCategory) { category in
-            CategoryFormView(viewModel: viewModel, editingCategory: category)
-        }
-    }
-}
-
-struct CategorySection: View {
-    let type: TransactionType
-    @ObservedObject var viewModel: SettingsViewModel
-    
-    var body: some View {
-        Section(header: Text(type.rawValue)) {
-            ForEach(viewModel.categories.filter { $0.type == type }) { category in
-                CategoryRow(category: category, viewModel: viewModel)
-            }
-            .onMove { source, destination in
-                viewModel.moveCategory(from: source, to: destination, type: type)
-            }
-            .onDelete { indexSet in
-                viewModel.deleteCategories(at: indexSet, type: type)
-            }
+        .sheet(item: $editingCategory) { category in
+            CategoryFormView(viewModel: viewModel, category: category)
         }
     }
 }
 
 struct CategoryRow: View {
     let category: Category
-    let viewModel: SettingsViewModel
     
     var body: some View {
-        Button(action: {
-            viewModel.editingCategory = category
-        }) {
-            HStack {
-                Image(systemName: category.icon)
-                    .foregroundColor(category.uiColor)
-                Text(category.name)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.gray)
-            }
+        HStack {
+            Image(systemName: category.icon)
+                .foregroundColor(category.uiColor)
+                .frame(width: 30)
+            
+            Text(category.name)
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.secondary)
+                .font(.caption)
         }
     }
 }
-
-struct AddButton: View {
-    @Binding var showingAddCategory: Bool
-    
-    var body: some View {
-        Button(action: { showingAddCategory = true }) {
-            Image(systemName: "plus")
-        }
-    }
-} 

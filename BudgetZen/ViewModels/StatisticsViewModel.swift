@@ -125,16 +125,16 @@ class StatisticsViewModel: ObservableObject {
         transactionViewModel.categories.first { $0.id == id }?.name ?? "Inconnu"
     }
     
-    func categoryColor(for id: UUID) -> Color {
-        if let category = transactionViewModel.categories.first(where: { $0.id == id }) {
-            return Color(hex: category.color)
-        }
-        return .gray
+    func category(for id: UUID) -> Category? {
+        transactionViewModel.category(for: id)
+    }
+    
+    func categoryColor(_ category: Category) -> Color {
+        category.uiColor
     }
     
     var categoryColors: [Color] {
-        let categories = transactionViewModel.categories
-        return categories.map { categoryColor(for: $0.id) }
+        transactionViewModel.categories.map { $0.uiColor }
     }
     
     var categoryNames: [String] {

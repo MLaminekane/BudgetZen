@@ -1,101 +1,204 @@
 import SwiftUI
 import LocalAuthentication
+import StoreKit
 
 struct SettingsView: View {
-    @StateObject private var viewModel = SettingsViewModel()
+    @StateObject private var viewModel = TransactionViewModel()
     @AppStorage("isDarkMode") private var isDarkMode = false
+    @AppStorage("selectedCurrency") private var selectedCurrency = "CAD"
+    @AppStorage("selectedLanguage") private var selectedLanguage = "fr"
+    @AppStorage("userName") private var userName = ""
     @State private var showingResetAlert = false
     @State private var showingExportSheet = false
+    @State private var showingProfileImagePicker = false
+    @State private var profileImage: UIImage?
+    @State private var isEditingProfile = false
+    @Environment(\.requestReview) private var requestReview
+    @State private var showingShareSheet = false
+    @StateObject private var backupService = BackupService()
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var showRestoreAlert = false
+    @State private var isSignedInToGoogle = false
+    
+    private let currencies = [
+        ("CAD", "$", "Dollar canadien"),
+        ("USD", "$", "Dollar américain"),
+        ("EUR", "€", "Euro"),
+        ("GBP", "£", "Livre sterling")
+    ]
+    
+    private let languages = [
+        ("fr", "Français"),
+        ("en", "English")
+    ]
     
     var body: some View {
         NavigationView {
             List {
+                // Profil utilisateur
+                Section {
+                    HStack {
+                        // Image de profil avec bouton
+                        Button(action: {
+                            showingProfileImagePicker = true
+                        }) {
+                            if let image = profileImage {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(Circle())
+                            } else {
+                                Image(systemName: "person.circle.fill")
+                                    .resizable()
+                                    .frame(width: 60, height: 60)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        
+                        VStack(alignment: .leading) {
+                            if isEditingProfile {
+                                TextField("Nom d'utilisateur", text: $userName)
+                            } else {
+                                Text(userName.isEmpty ? "Utilisateur" : userName)
+                                    .font(.headline)
+                            }
+                        }
+                        .padding(.leading)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            withAnimation {
+                                isEditingProfile.toggle()
+                            }
+                        }) {
+                            Image(systemName: isEditingProfile ? "checkmark.circle.fill" : "pencil")
+                                .foregroundColor(isEditingProfile ? .green : .blue)
+                        }
+                    }
+                }
+                
                 // Apparence
                 Section(header: Text("Apparence")) {
                     Toggle("Mode sombre", isOn: $isDarkMode)
+                        .animation(.easeInOut, value: isDarkMode)
+                }
+                
+                // Préférences
+                Section(header: Text("Préférences")) {
+                    Picker("Devise", selection: $selectedCurrency) {
+                        ForEach(currencies, id: \.0) { currency in
+                            Text("\(currency.1) \(currency.2)").tag(currency.0)
+                        }
+                    }
                     
-                    NavigationLink("Thème et couleurs") {
-                        ThemeSettingsView(viewModel: viewModel)
+                    Picker("Langue", selection: $selectedLanguage) {
+                        ForEach(languages, id: \.0) { language in
+                            Text(language.1).tag(language.0)
+                        }
                     }
                 }
                 
                 // Sécurité
                 Section(header: Text("Sécurité")) {
-                    Toggle("Face ID / Touch ID", isOn: $viewModel.useBiometrics)
-                        .onChange(of: viewModel.useBiometrics) { _, newValue in
-                            if newValue {
-                                viewModel.checkBiometrics()
-                            }
-                        }
-                    
                     NavigationLink("Code PIN") {
-                        PINSettingsView(viewModel: viewModel)
-                    }
-                }
-                
-                // Catégories
-                Section(header: Text("Catégories")) {
-                    NavigationLink("Gérer les catégories") {
-                        CategoriesSettingsView(viewModel: viewModel)
+                        PINSettingsView()
                     }
                 }
                 
                 // Notifications
                 Section(header: Text("Notifications")) {
-                    Toggle("Rappels de saisie", isOn: $viewModel.enableReminders)
-                    Toggle("Alertes de budget", isOn: $viewModel.enableBudgetAlerts)
-                    
-                    if viewModel.enableReminders || viewModel.enableBudgetAlerts {
-                        NavigationLink("Configurer les notifications") {
-                            NotificationSettingsView(viewModel: viewModel)
-                        }
-                    }
-                }
-                
-                // Préférences
-                Section(header: Text("Préférences")) {
-                    Picker("Devise", selection: $viewModel.selectedCurrency) {
-                        ForEach(viewModel.availableCurrencies, id: \.code) { currency in
-                            Text("\(currency.symbol) \(currency.name)").tag(currency.code)
-                        }
-                    }
-                    
-                    Picker("Langue", selection: $viewModel.selectedLanguage) {
-                        ForEach(viewModel.availableLanguages, id: \.code) { language in
-                            Text(language.name).tag(language.code)
-                        }
+                    NavigationLink("Configurer les notifications") {
+                        NotificationSettingsView()
                     }
                 }
                 
                 // Synchronisation
                 Section(header: Text("Synchronisation")) {
-                    Toggle("Synchronisation iCloud", isOn: $viewModel.enableICloudSync)
+                    Picker("Service de sauvegarde", selection: $backupService.selectedProvider) {
+                        Text("iCloud").tag(BackupProvider.iCloud)
+                        // On cache temporairement l'option Google Drive
+                        // Text("Google Drive").tag(BackupProvider.googleDrive)
+                    }
                     
-                    if viewModel.enableICloudSync {
-                        HStack {
-                            Text("Dernière synchronisation")
-                            Spacer()
-                            Text(viewModel.lastSyncDate?.formatted() ?? "Jamais")
-                                .foregroundColor(.gray)
+                    Button(action: {
+                        Task {
+                            do {
+                                try await backupService.backup()
+                            } catch {
+                                showError = true
+                                errorMessage = error.localizedDescription
+                            }
                         }
-                        
-                        Button("Synchroniser maintenant") {
-                            viewModel.syncData()
+                    }) {
+                        HStack {
+                            Text("Sauvegarder maintenant")
+                            if backupService.isBackingUp {
+                                ProgressView()
+                            }
                         }
                     }
-                }
-                
-                // Exportation
-                Section(header: Text("Exportation")) {
-                    Button("Exporter les données") {
-                        showingExportSheet = true
+                    .disabled(backupService.isBackingUp)
+                    
+                    if let lastBackup = backupService.lastBackupDate {
+                        HStack {
+                            Text("Dernière sauvegarde")
+                            Spacer()
+                            Text(lastBackup.formatted())
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Button(action: {
+                        showRestoreAlert = true
+                    }) {
+                        Text("Restaurer une sauvegarde")
+                            .foregroundColor(.red)
                     }
                 }
                 
                 // Réinitialisation
-                Section(header: Text("Réinitialisation")) {
-                    Button("Réinitialiser toutes les données", role: .destructive) {
+                Section {
+                    Button(role: .destructive) {
                         showingResetAlert = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("Réinitialiser toutes les données")
+                        }
+                    }
+                }
+                
+                // Support
+                Section(header: Text("Support")) {
+                    Button(action: {
+                        requestReview()
+                    }) {
+                        HStack {
+                            Image(systemName: "star.fill")
+                                .foregroundColor(.yellow)
+                            Text("Noter l'application")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    
+                    Button(action: {
+                        showingShareSheet = true
+                    }) {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundColor(.blue)
+                            Text("Partager l'application")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
                     }
                 }
                 
@@ -104,8 +207,8 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text(viewModel.appVersion)
-                            .foregroundColor(.gray)
+                        Text(Bundle.main.appVersion)
+                            .foregroundColor(.secondary)
                     }
                     
                     NavigationLink("Mentions légales") {
@@ -126,65 +229,70 @@ struct SettingsView: View {
             } message: {
                 Text("Cette action supprimera définitivement toutes vos données. Cette action est irréversible.")
             }
-            .sheet(isPresented: $showingExportSheet) {
-                ExportView(viewModel: viewModel)
+            .sheet(isPresented: $showingProfileImagePicker) {
+                ImagePicker(image: $profileImage)
+            }
+            .animation(.easeInOut, value: isEditingProfile)
+            .sheet(isPresented: $showingShareSheet) {
+                ShareSheet(items: [
+                    "Découvrez BudgetZen, l'application qui simplifie la gestion de vos finances !",
+                    URL(string: "https://apps.apple.com/app/budgetzen")!
+                ])
             }
         }
     }
 }
 
-struct ThemeSettingsView: View {
-    @ObservedObject var viewModel: SettingsViewModel
-    
-    var body: some View {
-        List {
-            Section(header: Text("Couleur principale")) {
-                ColorPicker("Couleur", selection: $viewModel.accentColor)
-            }
-            
-            Section(header: Text("Style")) {
-                Picker("Style d'interface", selection: $viewModel.interfaceStyle) {
-                    Text("Système").tag(InterfaceStyle.system)
-                    Text("Clair").tag(InterfaceStyle.light)
-                    Text("Sombre").tag(InterfaceStyle.dark)
-                }
-            }
-        }
-        .navigationTitle("Thème")
-    }
-}
-
-struct ExportView: View {
-    @ObservedObject var viewModel: SettingsViewModel
+// Helper pour la sélection d'image
+struct ImagePicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
     @Environment(\.dismiss) private var dismiss
     
-    var body: some View {
-        NavigationView {
-            List {
-                Section {
-                    Button("Exporter en CSV") {
-                        viewModel.exportData(format: .csv)
-                    }
-                    
-                    Button("Exporter en PDF") {
-                        viewModel.exportData(format: .pdf)
-                    }
-                }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: ImagePicker
+        
+        init(_ parent: ImagePicker) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.image = image
             }
-            .navigationTitle("Exporter")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Fermer") {
-                        dismiss()
-                    }
-                }
-            }
+            parent.dismiss()
         }
     }
 }
 
-// Prévisualisation
+extension Bundle {
+    var appVersion: String {
+        infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+}
+
+// Ajouter cette structure pour le partage
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 #Preview {
     SettingsView()
 } 

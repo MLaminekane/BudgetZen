@@ -28,10 +28,8 @@ struct DashboardView: View {
                     ChartSection(viewModel: viewModel, period: selectedPeriod)
                     
                     // Budgets et objectifs
-                    BudgetProgressSection(viewModel: viewModel)
+//                    BudgetProgressSection(viewModel: viewModel)
                     
-                    // Abonnements actifs
-                    SubscriptionsSection(viewModel: viewModel)
                     
                     // Transactions récentes
                     RecentTransactionsSection(viewModel: viewModel)
@@ -173,24 +171,7 @@ struct BudgetProgressSection: View {
     }
 }
 
-struct SubscriptionsSection: View {
-    let viewModel: TransactionViewModel
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Abonnements actifs")
-                .font(.headline)
-            
-            ForEach(viewModel.activeSubscriptions) { subscription in
-                SubscriptionRow(transaction: subscription, viewModel: viewModel)
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(radius: 2)
-    }
-}
+
 
 struct RecentTransactionsSection: View {
     let viewModel: TransactionViewModel

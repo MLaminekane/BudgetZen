@@ -16,7 +16,7 @@ struct BudgetProgressRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: budget.category.icon)
-                    .foregroundColor(Color(hex: budget.category.color))
+                    .foregroundColor(budget.category.uiColor)
                 Text(budget.category.name)
                 Spacer()
                 Text(String(format: "%.0f%%", progress * 100))
